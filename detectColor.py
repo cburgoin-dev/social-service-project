@@ -57,6 +57,8 @@ while True:
 
     lower_blue = np.array([100, 150, 0])
     upper_blue = np.array([140, 255, 255])
+    
+    
 
     red_mask1 = cv.inRange(hsv, lower_red1, upper_red1)
     red_mask2 = cv.inRange(hsv, lower_red2, upper_red2)
@@ -70,7 +72,18 @@ while True:
     cv.imshow('Original', frame)
     cv.imshow('Mask', red_mask)
     cv.imshow('Detected Color', res)
-
+    
+    red_count = cv.countNonZero(red_mask)
+    blue_count = cv.countNonZero(blue_mask)
+    green_count = cv.countNonZero(green_mask)
+    
+    colors={
+        "Red": red_count,
+        "Blue": blue_count,
+        "Green": green_count
+    }
+    
+    print (max(colors, key=colors.get))
     if cv.waitKey(1) & 0xFF == 27:
         break
 
