@@ -9,7 +9,11 @@ def start():
     print("Inicio")
 
 # Fondo primero
+
 img = tkinter.PhotoImage(file="fondo.png")
+
+img = tkinter.PhotoImage(file="C:/Users/Crist/OneDrive/Desktop/software-development/projects/social-service-project/fondo.png")
+
 lbl_img = tkinter.Label(ventana, image=img)
 lbl_img.place(x=0, y=0, relwidth=1, relheight=1)
 
@@ -21,9 +25,6 @@ title.place(relx=0.5, rely=0.3, anchor="center")
 btn_start = tkinter.Button(ventana, text="Empezar Escaneo de Fruitas", font=("Arial", 16), command=start)
 btn_start.place(relx=0.5, rely=0.5, anchor="center")
 
-
-
-    
 ventana.mainloop()
 def show_menu(frame):
     """Dibuja instrucciones en pantalla."""
@@ -51,7 +52,7 @@ def rescaleFrame(frame, scale=0.75):
     dimensions = (width, height)
     return cv.resize(frame, dimensions, interpolation=cv.INTER_AREA)
 
-cap = cv.VideoCapture(0)
+cap = cv.VideoCapture(1)
 
 current_mask = "Red"  # máscara inicial
 current_dominant = None
