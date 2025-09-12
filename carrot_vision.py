@@ -9,7 +9,7 @@ def start():
     print("Inicio")
 
 # Fondo primero
-img = tkinter.PhotoImage(file="C:/Users/danba/Favorites/PythonProjects/fondo.png")
+img = tkinter.PhotoImage(file="fondo.png")
 lbl_img = tkinter.Label(ventana, image=img)
 lbl_img.place(x=0, y=0, relwidth=1, relheight=1)
 
@@ -120,7 +120,31 @@ while True:
         mask = pink_mask
     elif current_mask == 'Brown':
         mask = brown_mask   
+        
+        
     res = cv.bitwise_and(frame, frame, mask=mask)
+
+   # --- Detección de contornos 
+    contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+    contour_frame = frame.copy()  
+    for contour in contours:
+        area = cv.contourArea(contour)
+        if area > 500:  
+            cv.drawContours(contour_frame, [contour], -1, (0, 255, 0), 2)
+
+            
+            x, y, w, h = cv.boundingRect(contour)
+            cv.rectangle(contour_frame, (x, y), (x + w, y + h), (255, 0, 0), 2)
+
+            
+            cv.putText(contour_frame, f"Area: {int(area)}",
+                       (x, y - 10), cv.FONT_HERSHEY_SIMPLEX,
+                       0.6, (0, 255, 0), 2)
+
+   
+    cv.imshow("Contours", contour_frame)
+
 
     # --- Mostrar menú en pantalla ---
     show_menu(frame)
