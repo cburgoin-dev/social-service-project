@@ -12,7 +12,7 @@ def start():
 
 img = tkinter.PhotoImage(file="fondo.png")
 
-img = tkinter.PhotoImage(file="C:/Users/Crist/OneDrive/Desktop/software-development/projects/social-service-project/fondo.png")
+img = tkinter.PhotoImage(file="fondo.png")
 
 lbl_img = tkinter.Label(ventana, image=img)
 lbl_img.place(x=0, y=0, relwidth=1, relheight=1)
@@ -52,7 +52,7 @@ def rescaleFrame(frame, scale=0.75):
     dimensions = (width, height)
     return cv.resize(frame, dimensions, interpolation=cv.INTER_AREA)
 
-cap = cv.VideoCapture(1)
+cap = cv.VideoCapture(0)
 
 current_mask = "Red"  # máscara inicial
 current_dominant = None
