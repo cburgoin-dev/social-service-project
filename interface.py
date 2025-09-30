@@ -23,7 +23,7 @@ class FruitDetectorApp:
         # Columna 1: Info/Carrito (Mediana, 25% del ancho)
         self.root.grid_columnconfigure(1, weight=2, minsize=250)
         # Columna 2: Botones (Pequeña, 15% del ancho)
-        self.root.grid_columnconfigure(2, weight=1, minsize=150)
+        self.root.grid_columnconfigure(2, weight=0, minsize=100)
 
         self.root.grid_rowconfigure(0, weight=1) # Fila principal se expande verticalmente
 
@@ -47,15 +47,39 @@ class FruitDetectorApp:
 
     def _setup_styles(self):
         """Configura los estilos de los botones principales."""
-        style = ttk.Style()
-        # Estilos para los botones importantes (Accent y Danger)
-        style.configure('Accent.TButton', font=('Arial', 10, 'bold'), foreground='white', background='#007BFF') 
-        style.map('Accent.TButton', background=[('active', '#0056b3')])
-        style.configure('Danger.TButton', font=('Arial', 10, 'bold'), foreground='white', background='#dc3545')
-        style.map('Danger.TButton', background=[('active', '#c82333')])
-        # Estilo para el botón eliminar (gris)
-        style.configure('Grey.TButton', background='#6c757d', foreground='white')
-        style.map('Grey.TButton', background=[('active', '#5a6268')])
+        font_family = 'Arial'
+        font_size = 18
+        font_weight = 'bold'
+        self.button_styles = {
+        # Agregar fruta (verde)
+            "add": {
+                "bg": "#28a745", "fg": "white",
+                "font": (font_family, font_size, font_weight),
+                "width": 4, "height": 2,
+                "relief": "raised", "bd": 3
+            },
+        # Remover fruta (gris oscuro)
+            "remove": {
+                "bg": "#6c757d", "fg": "white",
+                "font": (font_family, font_size, font_weight),
+                "width": 4, "height": 2,
+                "relief": "raised", "bd": 3
+            },
+        # Obtener recibo (azul)
+            "receipt": {
+                "bg": "#007bff", "fg": "white",
+                "font": (font_family, font_size, font_weight),
+                "width": 4, "height": 2,
+                "relief": "raised", "bd": 3
+            },
+        # Cancelar pedido (rojo)
+            "cancel": {
+                "bg": "#dc3545", "fg": "white",
+                "font": (font_family, font_size, font_weight),
+                "width": 4, "height": 2,
+                "relief": "raised", "bd": 3
+            }
+        }
 
     def _create_video_panel(self):
         """Crea el panel de la cámara y la etiqueta de video."""
@@ -97,7 +121,7 @@ class FruitDetectorApp:
         self.receipt_frame.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
         self.receipt_frame.grid_rowconfigure(0, weight=1) # El treeview ocupa la mayor parte
         self.receipt_frame.grid_columnconfigure(0, weight=1)
-        
+
         # Treeview para la lista de frutas (el "carrito")
         self.receipt_tree = ttk.Treeview(self.receipt_frame, columns=('Nombre', 'Peso', 'Precio'), show='headings')
         self.receipt_tree.heading('Nombre', text='Fruta')
@@ -106,34 +130,36 @@ class FruitDetectorApp:
         self.receipt_tree.column('Nombre', width=100, anchor='w')
         self.receipt_tree.column('Peso', width=70, anchor='center')
         self.receipt_tree.column('Precio', width=70, anchor='e')
-        
+
         # Scrollbar vertical para el Treeview (carrito)
         vsb = ttk.Scrollbar(self.receipt_frame, orient="vertical", command=self.receipt_tree.yview)
         self.receipt_tree.configure(yscrollcommand=vsb.set)
-        
+
         self.receipt_tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky='ns')
 
         # Etiqueta de total final (parte inferior del carrito)
-        ttk.Label(self.receipt_frame, textvariable=self.total_var, 
+        ttk.Label(self.receipt_frame, textvariable=self.total_var,
                   font=('Arial', 14, 'bold'), foreground='navy').grid(row=1, column=0, columnspan=2, pady=5, sticky='e')
 
     def _create_button_panel(self):
         """Crea el panel con los botones de acción."""
-        self.button_panel = ttk.Frame(self.root)
-        self.button_panel.grid(row=0, column=2, padx=10, pady=10, sticky="nsw")
+        self.button_panel = tk.Frame(self.root)
+        self.button_panel.grid(row=0, column=2, padx=10, pady=10, sticky="ns")
 
-        # Configuración de tamaño para los botones uniformes
-        button_width = 18
-        padding_y = 15
-        
-        ttk.Button(self.button_panel, text="➕ Agregar Fruta", command=self.add_fruit, width=button_width).pack(pady=padding_y, ipady=5)
-        ttk.Button(self.button_panel, text="🗑️ Eliminar Fruta", command=self.remove_fruit, width=button_width, style='Grey.TButton').pack(pady=padding_y, ipady=5)
-        
-        # Botones principales con mayor separación
-        ttk.Button(self.button_panel, text="🧾 Obtener Recibo Final", command=self.finalize_order, width=button_width, style='Accent.TButton').pack(pady=padding_y * 2, ipady=10)
-        ttk.Button(self.button_panel, text="❌ Cancelar Todo", command=self.cancel_order, width=button_width, style='Danger.TButton').pack(pady=padding_y, ipady=5)
+        padding_y = 20
 
+        tk.Button(self.button_panel, text="➕", command=self.add_fruit,
+              **self.button_styles["add"]).pack(pady=padding_y)
+
+        tk.Button(self.button_panel, text="     🗑️", command=self.remove_fruit,
+              **self.button_styles["remove"]).pack(pady=padding_y)
+
+        tk.Button(self.button_panel, text="🧾", command=self.finalize_order,
+              **self.button_styles["receipt"]).pack(pady=padding_y)
+
+        tk.Button(self.button_panel, text="❌", command=self.cancel_order,
+              **self.button_styles["cancel"]).pack(pady=padding_y)
 
     def _video_loop(self):
         """Maneja el stream de video de OpenCV y la actualización de Tkinter."""
@@ -142,28 +168,28 @@ class FruitDetectorApp:
             if ret:
                 # 1. Aplicar tu lógica de detección de OpenCV aquí
                 # frame_procesado, fruta, peso = self.process_frame(frame)
-                
+
                 # Ejemplo de actualización de detalles (Deberías hacerlo con los resultados de tu OpenCV)
                 self.root.after(0, self._update_details, "MANZANA", "0.180 kg", "$5.99/kg", "$1.08")
 
                 # 2. Conversión para Tkinter (BGR -> RGB -> PIL Image -> PhotoImage)
                 cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
                 img = Image.fromarray(cv2image)
-                
+
                 # Obtener el tamaño actual de la etiqueta para redimensionar (opcional pero recomendado)
                 width = self.video_label.winfo_width()
                 height = self.video_label.winfo_height()
-                
+
                 if width > 0 and height > 0:
                     img_resized = img.resize((width, height))
                     img_tk = ImageTk.PhotoImage(image=img_resized)
-                    
+
                     # Mostrar en Tkinter (usar self.video_label.imgtk para evitar garbage collection)
                     self.video_label.imgtk = img_tk
                     self.video_label.configure(image=img_tk)
 
             # Pausa para regular los FPS y liberar CPU
-            time.sleep(0.015) 
+            time.sleep(0.015)
 
     def _update_details(self, fruta, peso, precio_kg, subtotal):
         """Actualiza los labels del panel de detalles (debe llamarse con root.after)."""
@@ -171,7 +197,6 @@ class FruitDetectorApp:
         self.lbl_peso.config(text=f"Peso Estimado: {peso}")
         self.lbl_precio_kg.config(text=f"Precio/kg: {precio_kg}")
         self.lbl_subtotal.config(text=f"Subtotal: {subtotal}")
-
 
     # ----------------------------------------
     # --- Funciones de Botones (Acciones) ----
@@ -184,7 +209,7 @@ class FruitDetectorApp:
         fruta_detectada = "Manzana"
         peso = 0.180
         precio_total = 1.08
-        
+
         self.receipt_tree.insert('', 'end', values=(fruta_detectada, f"{peso:.3f}", f"{precio_total:.2f}"))
         self._update_total()
         messagebox.showinfo("Carrito", f"{fruta_detectada} agregada.")
@@ -198,14 +223,14 @@ class FruitDetectorApp:
             messagebox.showinfo("Carrito", "Elemento eliminado correctamente.")
         else:
             messagebox.showwarning("Atención", "Selecciona una fruta del carrito para eliminar.")
-        
+
     def finalize_order(self):
         """Genera el recibo final y reinicia el carrito."""
         total = self._calculate_total()
         if total > 0:
             messagebox.showinfo("Recibo Final", f"Pedido completado. Total a pagar: ${total:.2f}")
             # Lógica para imprimir/guardar el recibo (Opcional)
-            
+
             # Reiniciar el carrito
             for item in self.receipt_tree.get_children():
                 self.receipt_tree.delete(item)
