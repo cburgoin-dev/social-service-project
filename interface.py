@@ -4,12 +4,19 @@ import cv2
 from PIL import Image, ImageTk
 import threading
 import time
+from ultralytics import YOLO
 
 class FruitDetectorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Sistema de Detección de Frutas")
         self.root.geometry("1200x700") # Tamaño inicial sugerido
+
+        # --- Cargar YOLO ---
+        self.model = YOLO('yolov8n.pt')
+        self.last_detected_fruit = None
+        self.last_detected_weight = None
+        self.last_detected_price = None
 
         # --- Variables de Estado ---
         self.is_running = True
@@ -166,30 +173,42 @@ class FruitDetectorApp:
         while self.is_running:
             ret, frame = self.cap.read()
             if ret:
-                # 1. Aplicar tu lógica de detección de OpenCV aquí
-                # frame_procesado, fruta, peso = self.process_frame(frame)
+                # Pasar el frame a YOLO
+                results = self.model(frame, verbose=False)[0]
 
-                # Ejemplo de actualización de detalles (Deberías hacerlo con los resultados de tu OpenCV)
-                self.root.after(0, self._update_details, "MANZANA", "0.180 kg", "$5.99/kg", "$1.08")
+                if len(results.boxes) > 0:
+                    # Tomar la primera detección con mayor confianza
+                    best_box = max(results.boxes, key=lambda b: float(b.conf[0]))
+                    class_id = int(best_box.cls[0])
+                    class_name = results.names[class_id]
+                    confidence = float(best_box.conf[0])
 
-                # 2. Conversión para Tkinter (BGR -> RGB -> PIL Image -> PhotoImage)
+                    peso = 0.0180
+                    precio_kg = 5.99
+                    subtotal = peso * precio_kg
+
+                    self.last_detected_fruit = class_name
+                    self.last_detected_weight = peso
+                    self.last_detected_price = subtotal
+
+                    self.root.after(0, self._update_details,
+                                    class_name,
+                                    f'{peso:.3f} kg',
+                                    f'${precio_kg:.2f}/kg',
+                                    f'${subtotal:.2f}')
+
                 cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
                 img = Image.fromarray(cv2image)
-
-                # Obtener el tamaño actual de la etiqueta para redimensionar (opcional pero recomendado)
                 width = self.video_label.winfo_width()
                 height = self.video_label.winfo_height()
 
                 if width > 0 and height > 0:
                     img_resized = img.resize((width, height))
                     img_tk = ImageTk.PhotoImage(image=img_resized)
-
-                    # Mostrar en Tkinter (usar self.video_label.imgtk para evitar garbage collection)
                     self.video_label.imgtk = img_tk
                     self.video_label.configure(image=img_tk)
 
-            # Pausa para regular los FPS y liberar CPU
-            time.sleep(0.015)
+            time.sleep(0.03)
 
     def _update_details(self, fruta, peso, precio_kg, subtotal):
         """Actualiza los labels del panel de detalles (debe llamarse con root.after)."""
@@ -204,15 +223,17 @@ class FruitDetectorApp:
 
     def add_fruit(self):
         """Añade la fruta actualmente detectada al carrito."""
-        # **NOTA: Aquí deberías usar los datos REALES de tu detección de OpenCV**
-        # Ejemplo:
-        fruta_detectada = "Manzana"
-        peso = 0.180
-        precio_total = 1.08
 
-        self.receipt_tree.insert('', 'end', values=(fruta_detectada, f"{peso:.3f}", f"{precio_total:.2f}"))
-        self._update_total()
-        messagebox.showinfo("Carrito", f"{fruta_detectada} agregada.")
+        if self.last_detected_fruit:
+            fruta_detectada = self.last_detected_fruit
+            peso = self.last_detected_weight
+            precio_total = self.last_detected_price
+
+            self.receipt_tree.insert('', 'end', values=(fruta_detectada, f"{peso:.3f}", f"{precio_total:.2f}"))
+            self._update_total()
+            messagebox.showinfo("Carrito", f"{fruta_detectada} agregada.")
+        else:
+            messagebox.showwarning("Atención", "No se ha detectado ninguna fruta.")
 
     def remove_fruit(self):
         """Elimina la fruta seleccionada del carrito."""
