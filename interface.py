@@ -5,6 +5,9 @@ from PIL import Image, ImageTk
 import threading
 import time
 from ultralytics import YOLO
+import pytesseract
+
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 class FruitDetectorApp:
     def __init__(self, root):
@@ -168,11 +171,44 @@ class FruitDetectorApp:
         tk.Button(self.button_panel, text="❌", command=self.cancel_order,
               **self.button_styles["cancel"]).pack(pady=padding_y)
 
+    def read_scale_digits(self, frame):
+        """
+        Detecta los dígitos visibles en la pantalla de una báscula digital y devuelve el número leído (float) o None si no se reconoce.
+        """
+
+        # --- Ajusta este recorte (ROI) según la ubicación de la pantalla en tu cámara ---
+        x1, y1, x2, y2 = 50, 50, 250, 120
+        roi = frame[y1:y2, x1:x2]
+
+        # --- Preprocesamiento para mejorar OCR ---
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+        # --- Leer con Tesseract (solo números, coma y punto) ---
+        config = "--psm 7 -c tessedit_char_whitelist=0123456789.,"
+        text = pytesseract.image_to_string(thresh, config=config)
+
+        # --- Limpieza del texto detectado ---
+        text = text.strip().replace(" ", "").replace("\n", "")
+        text = text.replace("O", "0").replace(",", ".") # Corrige errores comunes
+
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
     def _video_loop(self):
         """Maneja el stream de video de OpenCV y la actualización de Tkinter."""
+        precio_kg = 5.99
         while self.is_running:
-            ret, frame = self.cap.read()
-            if ret:
+            try:
+                ret, frame = self.cap.read()
+                if not ret or frame is None:
+                    print("⚠️ No se pudo leer frame de la cámara.")
+                    time.sleep(0.05)
+                    continue
+
+
                 # Pasar el frame a YOLO
                 results = self.model(frame, verbose=False)[0]
 
@@ -183,9 +219,20 @@ class FruitDetectorApp:
                     class_name = results.names[class_id]
                     confidence = float(best_box.conf[0])
 
-                    peso = 0.0180
-                    precio_kg = 5.99
-                    subtotal = peso * precio_kg
+                    # Leer el peso de la balanza
+                    peso = self.read_scale_digits(frame)
+
+                    # Calcular subtotal si se detectó peso válido
+                    if peso is not None:
+                        subtotal = peso * precio_kg
+                        peso_str = f"{peso:.3f} kg"
+                        subtotal_str = f"$(sbutotal:.2f)"
+                    else:
+                        peso = 0.0
+                        subtotal = 0.0
+                        peso_str = "No detectado"
+                        subtotal_str = "—"
+                        print("⚠️ No se pudo leer el peso actual.")
 
                     self.last_detected_fruit = class_name
                     self.last_detected_weight = peso
@@ -193,10 +240,11 @@ class FruitDetectorApp:
 
                     self.root.after(0, self._update_details,
                                     class_name,
-                                    f'{peso:.3f} kg',
+                                    peso_str,
                                     f'${precio_kg:.2f}/kg',
-                                    f'${subtotal:.2f}')
+                                    subtotal_str)
 
+                # Mostrar el video en el label de Tkinter
                 cv2image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
                 img = Image.fromarray(cv2image)
                 width = self.video_label.winfo_width()
@@ -207,6 +255,9 @@ class FruitDetectorApp:
                     img_tk = ImageTk.PhotoImage(image=img_resized)
                     self.video_label.imgtk = img_tk
                     self.video_label.configure(image=img_tk)
+
+            except Exception as e:
+                print(f"❌ Error en _video_loop: {e}")
 
             time.sleep(0.03)
 
