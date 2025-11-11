@@ -9,6 +9,22 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import os
+import re
+import sys
+import serial
+
+# -------------------------------------------------------------
+# 🥝 Diccionario de Precios por Kilogramo
+# -------------------------------------------------------------
+FRUIT_PRICES = {
+    "Apple Red 1": 15.50,
+    "Banana": 12.00,
+    "Avocado": 35.00,
+    "Kiwi": 28.90,
+    "Orange": 10.50,
+    "Lemon": 9.90,
+    "DEFAULT": 18.00 
+}
 
 class FruitDetectorApp:
     def __init__(self, root):
@@ -16,13 +32,16 @@ class FruitDetectorApp:
         self.root.title("Sistema de Detección de Frutas")
         self.root.geometry("1200x700")
 
-        # --- Cargar tu modelo de frutas entrenado ---
-        self.model = load_model("fruits360_mobilenetv2_finetuned(alternative).h5")
-        #self.model = load_model("fruits_real_optimized.h5")
+        # --- Parámetros de la balanza ---
+        self.SERIAL_PORT = 'COM9'
+        self.BAUD_RATE = 9600  # ✅ Corregido a 9600 según manual
+        self.balanza_peso_g = 0.0  # Siempre almacenamos en gramos (para consistencia)
+        
+        # --- Cargar modelo ---
+        self.model = load_model(r"C:/Users/danba/social-service-project/fruits360_mobilenetv2_finetuned_alternative.h5")
 
-        # --- Cargar las clases desde el dataset original ---
-        data_dir = "C:/Users/Emili/Downloads/archive (1)/train"  # ⚠️ Ajusta esta ruta a tu dataset, el que les voy a jitubear
-        #data_dir = "C:/Users/Emili/Downloads/fruits_data_set/Training"  # ⚠️ Ajusta esta ruta a tu dataset
+        # --- Cargar clases ---
+        data_dir = "C:/Users/danba/Downloads/archive/validation"
         datagen = ImageDataGenerator(rescale=1./255)
         generator = datagen.flow_from_directory(
             data_dir,
@@ -34,31 +53,38 @@ class FruitDetectorApp:
 
         # --- Variables de Estado ---
         self.last_detected_fruit = None
-        self.last_detected_weight = None
+        self.last_detected_weight = None  # en kg
         self.last_detected_price = None
         self.is_running = True
         self.cap = cv2.VideoCapture(0)
         self.total_var = tk.StringVar(value="TOTAL: $0.00")
+        self.balanza_status = tk.StringVar(value="Balanza: ❌ Desconectada")
 
-        # --- Layout principal ---
+        # --- Layout ---
         self._setup_styles()
         self._create_video_panel()
         self._create_info_panel()
         self._create_button_panel()
-
-        # --- Iniciar la cámara ---
+        
+        # --- Inicializar serial ---
+        self.serial_connection = None
+        self._init_serial_connection()
+        
+        # --- Hilos ---
         if self.cap.isOpened():
             self.video_thread = threading.Thread(target=self._video_loop, daemon=True)
             self.video_thread.start()
         else:
             messagebox.showerror("Error", "No se pudo abrir la cámara.")
             self.root.destroy()
+            return
+            
+        if self.serial_connection:
+            self.serial_thread = threading.Thread(target=self._serial_loop, daemon=True)
+            self.serial_thread.start()
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-    # -----------------------------------------------
-    # Estilos y Layout
-    # -----------------------------------------------
     def _setup_styles(self):
         font_family = 'Arial'
         font_size = 18
@@ -67,11 +93,11 @@ class FruitDetectorApp:
             "add": {"bg": "#28a745", "fg": "white", "font": (font_family, font_size, font_weight),
                     "width": 4, "height": 2, "relief": "raised", "bd": 3},
             "remove": {"bg": "#6c757d", "fg": "white", "font": (font_family, font_size, font_weight),
-                       "width": 4, "height": 2, "relief": "raised", "bd": 3},
-            "receipt": {"bg": "#007bff", "fg": "white", "font": (font_family, font_size, font_weight),
                         "width": 4, "height": 2, "relief": "raised", "bd": 3},
+            "receipt": {"bg": "#007bff", "fg": "white", "font": (font_family, font_size, font_weight),
+                         "width": 4, "height": 2, "relief": "raised", "bd": 3},
             "cancel": {"bg": "#dc3545", "fg": "white", "font": (font_family, font_size, font_weight),
-                       "width": 4, "height": 2, "relief": "raised", "bd": 3}
+                        "width": 4, "height": 2, "relief": "raised", "bd": 3}
         }
 
     def _create_video_panel(self):
@@ -92,9 +118,12 @@ class FruitDetectorApp:
         self.lbl_peso = ttk.Label(self.details_frame, text="Peso Estimado: N/A")
         self.lbl_precio_kg = ttk.Label(self.details_frame, text="Precio/kg: N/A")
         self.lbl_subtotal = ttk.Label(self.details_frame, text="Subtotal: N/A")
+        self.lbl_balanza_status = ttk.Label(self.details_frame, textvariable=self.balanza_status,
+                                            font=('Arial', 10, 'italic'))
 
         for lbl in [self.lbl_fruta, self.lbl_peso, self.lbl_precio_kg, self.lbl_subtotal]:
             lbl.pack(anchor="w", padx=5, pady=2)
+        self.lbl_balanza_status.pack(anchor="w", padx=5, pady=2)
 
         # Panel del carrito
         self.receipt_frame = ttk.LabelFrame(self.info_panel, text="Carrito de Compras")
@@ -121,25 +150,60 @@ class FruitDetectorApp:
         ]:
             tk.Button(self.button_panel, text=text, command=cmd, **self.button_styles[style]).pack(pady=20)
 
-    # -----------------------------------------------
-    # Procesamiento de video
-    # -----------------------------------------------
+    def _init_serial_connection(self):
+        try:
+            self.serial_connection = serial.Serial(
+                port=self.SERIAL_PORT,
+                baudrate=self.BAUD_RATE,
+                bytesize=serial.EIGHTBITS,
+                parity=serial.PARITY_NONE,
+                stopbits=serial.STOPBITS_ONE,
+                timeout=1
+            )
+            print("✅ Conexión serial: 9600 8N1")
+            self.balanza_status.set("Balanza: ✅ Conectada")
+        except serial.SerialException as e:
+            self.serial_connection = None
+            self.balanza_status.set("Balanza: ❌ Desconectada")
+            messagebox.showwarning("Conexión Serial", f"Error: {e}")
+
+    def _serial_loop(self):
+        if self.serial_connection:
+            self.serial_connection.reset_input_buffer()
+            print("\n--- BALANZA: Enviando 'P' cada 1.5s ---")
+            
+            while self.is_running and self.serial_connection.is_open:
+                try:
+                    # Enviar comando 'P' para solicitar peso
+                    self.serial_connection.write(b'P')
+                    time.sleep(0.8)  # Esperar respuesta
+                    
+                    if self.serial_connection.in_waiting > 0:
+                        data = self.serial_connection.read(self.serial_connection.in_waiting)
+                        try:
+                            text = data.decode('utf-8', errors='ignore').strip()
+                            numbers = re.findall(r'[-+]?\d*\.?\d+', text)
+                            if numbers:
+                                peso_kg = float(numbers[0])  # La balanza envía en kg (ej. 3.500)
+                                self.balanza_peso_g = peso_kg * 1000  # Convertir a gramos para uso interno
+                                print(f"✅ Peso: {peso_kg:.3f} kg ({self.balanza_peso_g:.1f} g)")
+                        except Exception as e:
+                            print(f"⚠️ Error parsing: {e}")
+                    
+                    time.sleep(1.5)  # Intervalo entre comandos
+                    
+                except Exception as e:
+                    print(f"🚨 Error serial: {e}")
+                    time.sleep(1)
+
     def preprocess_frame(self, frame):
-        # Convertir a RGB
         img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        
-        # 🔹 Eliminar fondo claro (blanco, gris claro)
         mask = cv2.inRange(img_rgb, (180, 180, 180), (255, 255, 255))
         img_rgb[mask == 255] = (255, 255, 255)
-        
-        # 🔹 Mejorar contraste (útil para cámara)
         img_rgb = cv2.convertScaleAbs(img_rgb, alpha=1.2, beta=10)
-        
-        # 🔹 Redimensionar y normalizar
         img_resized = cv2.resize(img_rgb, (100, 100))
         img_array = np.expand_dims(img_resized / 255.0, axis=0)
         return img_array
-
 
     def _video_loop(self):
         while self.is_running:
@@ -149,23 +213,21 @@ class FruitDetectorApp:
                 preds = self.model.predict(img_array, verbose=0)
                 class_name = self.class_names[np.argmax(preds)]
 
-                # Simulación de peso/precio (puedes cambiar según tu lógica real)
-                peso = 0.2
-                precio_kg = 8.99
-                subtotal = peso * precio_kg
+                # Convertir gramos internos a kg para mostrar
+                peso_kg = self.balanza_peso_g / 1000.0 if self.balanza_peso_g > 0 else 0.0
+                precio_kg = FRUIT_PRICES.get(class_name, FRUIT_PRICES["DEFAULT"])
+                subtotal = peso_kg * precio_kg
 
-                # Guardar detección actual
                 self.last_detected_fruit = class_name
-                self.last_detected_weight = peso
+                self.last_detected_weight = peso_kg
                 self.last_detected_price = subtotal
 
                 self.root.after(0, self._update_details,
-                                class_name,
-                                f'{peso:.3f} kg',
-                                f'${precio_kg:.2f}/kg',
-                                f'${subtotal:.2f}')
+                                 class_name,
+                                 f'{peso_kg:.3f} kg',
+                                 f'${precio_kg:.2f}/kg',
+                                 f'${subtotal:.2f}')
 
-                # Mostrar el frame en Tkinter
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
                 img = Image.fromarray(frame_rgb)
                 img_tk = ImageTk.PhotoImage(image=img.resize((640, 480)))
@@ -173,28 +235,27 @@ class FruitDetectorApp:
                 self.video_label.configure(image=img_tk)
             time.sleep(0.05)
 
-    # -----------------------------------------------
-    # Actualización de información
-    # -----------------------------------------------
     def _update_details(self, fruta, peso, precio_kg, subtotal):
         self.lbl_fruta.config(text=f"Fruta: {fruta}")
         self.lbl_peso.config(text=f"Peso Estimado: {peso}")
         self.lbl_precio_kg.config(text=f"Precio/kg: {precio_kg}")
         self.lbl_subtotal.config(text=f"Subtotal: {subtotal}")
 
-    # -----------------------------------------------
-    # Botones
-    # -----------------------------------------------
     def add_fruit(self):
-        if self.last_detected_fruit:
-            fruta = self.last_detected_fruit
-            peso = self.last_detected_weight
-            precio_total = self.last_detected_price
-            self.receipt_tree.insert('', 'end', values=(fruta, f"{peso:.3f}", f"{precio_total:.2f}"))
-            self._update_total()
-            messagebox.showinfo("Carrito", f"{fruta} agregada.")
-        else:
+        if not self.last_detected_fruit:
             messagebox.showwarning("Atención", "No se ha detectado ninguna fruta.")
+            return
+            
+        if self.balanza_peso_g <= 0:
+            messagebox.showwarning("Atención", "Peso en balanza es 0. Coloque el producto.")
+            return
+            
+        fruta = self.last_detected_fruit
+        peso = self.last_detected_weight
+        precio_total = self.last_detected_price
+        self.receipt_tree.insert('', 'end', values=(fruta, f"{peso:.3f}", f"{precio_total:.2f}"))
+        self._update_total()
+        messagebox.showinfo("Carrito", f"{fruta} agregada con {peso:.3f} kg.")
 
     def remove_fruit(self):
         selected = self.receipt_tree.focus()
@@ -229,11 +290,13 @@ class FruitDetectorApp:
         total = self._calculate_total()
         self.total_var.set(f"TOTAL: ${total:.2f}")
 
-    # -----------------------------------------------
     def on_closing(self):
         self.is_running = False
         if self.cap.isOpened():
             self.cap.release()
+        if self.serial_connection:
+            self.serial_connection.close()
+            print("Conexión serial cerrada.")
         self.root.destroy()
 
 # -----------------------------------------------
