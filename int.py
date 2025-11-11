@@ -16,6 +16,7 @@ import serial
 # -------------------------------------------------------------
 # 🥝 Diccionario de Precios por Kilogramo
 # -------------------------------------------------------------
+'''
 FRUIT_PRICES = {
     "Apple Red 1": 15.50,
     "Banana": 12.00,
@@ -25,7 +26,7 @@ FRUIT_PRICES = {
     "Lemon": 9.90,
     "DEFAULT": 18.00 
 }
-
+'''
 class FruitDetectorApp:
     def __init__(self, root):
         self.root = root
@@ -50,6 +51,44 @@ class FruitDetectorApp:
             class_mode='categorical'
         )
         self.class_names = list(generator.class_indices.keys())
+
+        self.prices = {
+            "apple": 25.0,
+            "banana": 22.5,
+            "orange": 28.0,
+            "lemon": 20.0,
+            "mango": 40.0,
+            "grapes": 35.0,
+            "pineapple": 30.0,
+            "watermelon": 15.0,
+            "pear": 27.0,
+            "paprika": 32.0,
+            "tomato": 18.0,
+            "chilli pepper": 45.0,
+            "bell pepper": 38.0,
+            "cucumber": 19.0,
+            "lettuce": 16.0,
+            "spinach": 14.0,
+            "potato": 12.0,
+            "sweetpotato": 13.5,
+            "carrot": 18.0,
+            "beetroot": 20.0,
+            "radish": 15.0,
+            "onion": 14.5,
+            "garlic": 70.0,
+            "ginger": 60.0,
+            "corn": 10.0,
+            "sweetcorn": 12.0,
+            "peas": 25.0,
+            "soy beans": 30.0,
+            "capsicum": 36.0,
+            "eggplant": 22.0,
+            "cauliflower": 28.0,
+            "turnip": 17.0,
+            "pomegranate": 50.0,
+            "kiwi": 55.0,
+            "jalepeno": 42.0
+        }
 
         # --- Variables de Estado ---
         self.last_detected_fruit = None
@@ -215,7 +254,10 @@ class FruitDetectorApp:
 
                 # Convertir gramos internos a kg para mostrar
                 peso_kg = self.balanza_peso_g / 1000.0 if self.balanza_peso_g > 0 else 0.0
+                '''
                 precio_kg = FRUIT_PRICES.get(class_name, FRUIT_PRICES["DEFAULT"])
+                '''
+                precio_kg = self.prices.get(class_name, 20.0)
                 subtotal = peso_kg * precio_kg
 
                 self.last_detected_fruit = class_name
